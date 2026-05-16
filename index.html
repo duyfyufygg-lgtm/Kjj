@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Werewolf Pro - Ultimate Balanced Roles</title>
+    <title>Werewolf Pro - Fixed Live Voting</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
@@ -64,7 +64,7 @@
         button.secondary { background: #334155; }
         button.secondary:hover { background: #1e293b; }
         button.ai-btn { background: var(--ai-color); }
-        button.vote-btn { background: #eab308; color: #000; padding: 6px 12px; font-size: 12px; width: auto; margin: 0; border-radius: 6px;}
+        button.vote-btn { background: #eab308; color: #000; padding: 6px 12px; font-size: 12px; width: auto; margin: 0; border-radius: 6px; font-weight: bold;}
 
         .screen { display: none; }
         .screen.active { display: block; }
@@ -100,6 +100,7 @@
         .badge.alive { background: var(--success); color: white; }
         .badge.dead { background: #ef4444; color: white; text-decoration: line-through; }
         .badge.ai { background: var(--ai-color); color: white; }
+        .badge.votes { background: #eab308; color: black; font-size: 11px; margin-left: 5px; }
         
         .game-phase-box { background: #020617; border: 2px solid #eab308; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 20px; }
         .timer-badge { background: #ef4444; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 14px; margin-left: 10px; color: white; }
@@ -179,7 +180,7 @@
                 <tr>
                     <th>ผู้เล่น</th>
                     <th>สถานะ</th>
-                    <th id="th-action" style="text-align:right;">คำสั่ง</th>
+                    <th id="th-action" style="text-align:right;">คำสั่ง / โหวต</th>
                 </tr>
             </thead>
             <tbody id="action-table-body"></tbody>
@@ -189,7 +190,7 @@
             <h4 style="font-size:12px; color:var(--accent-color);">💬 กล่องสนทนาประจำหมู่บ้าน</h4>
             <ul id="chat-messages" class="chat-messages"></ul>
             <div class="chat-input-group">
-                <input type="text" id="chat-input" placeholder="พิมพ์ข้อความคุมกันที่นี่..." onkeypress="if(event.key==='Enter') sendChatMessage()">
+                <input type="text" id="chat-input" placeholder="พิมพ์ข้อความคุยกันที่นี่..." onkeypress="if(event.key==='Enter') sendChatMessage()">
                 <button type="button" onclick="sendChatMessage()">ส่ง</button>
             </div>
         </div>
@@ -200,8 +201,8 @@
                 <button type="button" id="toggle-ai-btn" style="background:#a855f7; font-size:13px; padding:8px;" onclick="toggleAiStatus()">🤖 บอททำงานอัตโนมัติ: เปิดใช้งาน</button>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                <button type="button" style="background:#1e1b4b;" onclick="triggerPhaseChange('night')">🌙 สรุปผลและเข้าสู่กลางคืน</button>
-                <button type="button" style="background:#f59e0b; color:black;" onclick="triggerPhaseChange('day')">☀️ สรุปผลและเข้าสู่กลางวัน</button>
+                <button type="button" style="background:#1e1b4b;" onclick="triggerPhaseChange('night')">🌙 สรุปโหวตและเข้าสู่กลางคืน</button>
+                <button type="button" style="background:#f59e0b; color:black;" onclick="triggerPhaseChange('day')">☀️ สรุปผลคืนมรณะเข้าสู่กลางวัน</button>
             </div>
             <button type="button" style="background: #ef4444; margin-top:8px;" onclick="resetWholeGame()">🔄 รีเซ็ตกระดานเริ่มรอบใหม่</button>
         </div>
@@ -216,7 +217,7 @@
 
         let currentRoomId = null, myPlayerId = null, myName = "", isHost = false, roomRef = null;
         let myRole = "", myAlive = true, countdownInterval = null, currentPhaseState = "night";
-        let aiActionDone = false, isAiActive = true; 
+        let aiActionDone = false, isAiActive = true, hasVotedThisDay = false; 
 
         const ROLE_DETAILS = {
             '🐺 หมาป่า': 'ตอนกลางคืนทีมหมาป่าต้องเลือกฆ่าชาวบ้านร่วมกันได้แค่ "1 คนต่อคืนเท่านั้น" ห้ามให้คนอื่นจับได้',
@@ -226,7 +227,7 @@
         };
 
         const AI_NAMES = ["สมชาย", "สมศรี", "สายปั่น", "นักสืบจิ๋ว", "มานะ", "มานี"];
-        const BOT_TALKS = ["ฉันว่ามีคนเงียบแปลกๆ นะ", "ฉันเป็นชาวบ้านบริสุทธิ์นะบอกเลย!", "หมอดูเจออะไรบ้างหรือยัง?", "จ้องคนไม่ค่อยพิมพ์ไว้เลย"];
+        const BOT_TALKS = ["ฉันว่ามีคนเงียบแปลกๆ นะ", "ฉันเป็นชาวบ้านบริสุทธิ์นะบอกเลย!", "หมอดูเจออะไรบ้างหรือยัง?", "จ้องคนไม่ค่อยพิมพ์ไว้เลย", "ฉันโหวตตามคนส่วนใหญ่นะ"];
 
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -298,6 +299,7 @@
                 if(currentPhaseState !== data.phase) {
                     currentPhaseState = data.phase;
                     aiActionDone = false; 
+                    hasVotedThisDay = false; 
                 }
                 
                 if (data.status === "waiting") {
@@ -323,7 +325,7 @@
                     } else {
                         document.body.classList.remove('night');
                         document.getElementById('phase-title').innerText = "☀️ กลางวันสืบสวน";
-                        document.getElementById('phase-desc').innerText = "ระดมสมองแชตหาตัวร้ายในคราบมนุษย์";
+                        document.getElementById('phase-desc').innerText = "ระดมสมองแชตหาตัวร้าย และกดโหวตแขวนคอคนต้องสงสัย!";
                         document.getElementById('chat-input').disabled = !myAlive;
                         document.getElementById('chat-input').placeholder = myAlive ? "พิมพ์แชตจับผิดคนร้าย..." : "💀 คุณตายแล้ว";
                     }
@@ -380,9 +382,16 @@
                 const ai = playersObj[id];
                 if(!ai.isAi || !ai.alive) return;
 
-                if (phase === "day" && Math.random() > 0.4) {
-                    const talk = BOT_TALKS[Math.floor(Math.random() * BOT_TALKS.length)];
-                    roomRef.child('chats').push().set({ senderId: id, senderName: ai.name + " (AI)", message: talk });
+                if (phase === "day") {
+                    if (Math.random() > 0.4) {
+                        const talk = BOT_TALKS[Math.floor(Math.random() * BOT_TALKS.length)];
+                        roomRef.child('chats').push().set({ senderId: id, senderName: ai.name + " (AI)", message: talk });
+                    }
+                    const voteTargets = keys.filter(k => playersObj[k].alive && k !== id);
+                    if (voteTargets.length > 0 && Math.random() > 0.3) {
+                        const target = voteTargets[Math.floor(Math.random() * voteTargets.length)];
+                        roomRef.child(`players/${target}/votesReceived`).transaction(v => (v || 0) + 1);
+                    }
                 }
                 else if (phase === "night") {
                     if (ai.role === '🐺 หมาป่า' && currentNightVictim === "") {
@@ -397,38 +406,30 @@
             });
         }
 
-        // 🎲 ลอจิกการันตี 3 บทบาทสำคัญ: สุ่มอิสระก่อน แล้วดักตรวจเช็ก คอมโบ หมาป่า/หมอดู/บอดี้การ์ด ครบถ้วนชัวร์ 100%
         function distributeRoles() {
             roomRef.once('value').then(snap => {
                 const players = snap.val().players;
                 let keys = Object.keys(players);
                 const total = keys.length;
                 
-                // ตั้งขีดจำกัดขั้นต่ำตามจำนวนผู้เล่นจริง
                 if (total < 3) { alert('ต้องมีคนอย่างน้อย 3 คนขึ้นไปถึงจะแบ่งตำแหน่ง หมาป่า หมอดู และบอดี้การ์ด ได้อย่างสมดุลครับ'); return; }
                 
                 let assignedRoles = {};
                 const availableRoles = ['🐺 หมาป่า', '👁️ หมอดู', '🛡️ บอดี้การ์ด', '🧑 ชาวบ้าน'];
                 
-                // 1. ปล่อยสุ่มอิสระ 100% รอบแรก สิทธิ์เท่าเทียมกันทุกคน
                 keys.forEach(pId => {
                     const randomIndex = Math.floor(Math.random() * availableRoles.length);
                     assignedRoles[pId] = availableRoles[randomIndex];
                 });
                 
-                // ลังก์ชันสำหรับช่วยนับบทบาทปัจจุบัน
                 function countRole(roleName) {
                     let count = 0;
                     Object.values(assignedRoles).forEach(r => { if(r === roleName) count++; });
                     return count;
                 }
 
-                // สับเปลี่ยนลำดับตัวผู้เล่นเตรียมไว้สำหรับกรณีกระจายบทที่ขาดแคลน
                 let shuffledKeys = [...keys].sort(() => Math.random() - 0.5);
 
-                // 2. [Combo Safety Check] ตรวจเช็กและยัดเยียบบทบาทสำคัญให้ครบถ้วน
-                
-                // เช็กหมาป่า (คนน้อยเอา 1 ตัว | คนเยอะตั้งแต 5 คนขึ้นไปเอา 2 ตัวขึ้นไป)
                 let requiredWolves = total >= 5 ? 2 : 1;
                 let currentWolves = countRole('🐺 หมาป่า');
                 if (currentWolves < requiredWolves) {
@@ -439,7 +440,6 @@
                             needed--; if (needed === 0) break;
                         }
                     }
-                    // เคสเผื่อไม่มีชาวบ้านเหลือให้เลือก: ฝืนดึงจากบทอื่นที่เป็นตัวซ้ำมาแทน
                     if (needed > 0) {
                         for (let pId of shuffledKeys) {
                             if (assignedRoles[pId] !== '🐺 หมาป่า') {
@@ -450,10 +450,8 @@
                     }
                 }
 
-                // เช็กหมอดู (ต้องมี 1 คนเสมอ)
                 if (countRole('👁️ หมอดู') === 0) {
                     for (let pId of shuffledKeys) {
-                        // ดึงคนที่เป็นชาวบ้าน หรือบทบาทซ้ำที่ไม่ใช่หมาป่าตัวเดียวมาเป็นหมอดู
                         if (assignedRoles[pId] !== '🐺 หมาป่า' && assignedRoles[pId] !== '🛡️ บอดี้การ์ด') {
                             assignedRoles[pId] = '👁️ หมอดู';
                             break;
@@ -461,10 +459,8 @@
                     }
                 }
 
-                // เช็กบอดี้การ์ด (ต้องมี 1 คนเสมอ)
                 if (countRole('🛡️ บอดี้การ์ด') === 0) {
                     for (let pId of shuffledKeys) {
-                        // ดึงคนที่ไม่ใช่หมาป่าและไม่ใช่หมอดู มาทำหน้าที่การ์ดเซฟเพื่อน
                         if (assignedRoles[pId] !== '🐺 หมาป่า' && assignedRoles[pId] !== '👁️ หมอดู') {
                             assignedRoles[pId] = '🛡️ บอดี้การ์ด';
                             break;
@@ -472,7 +468,6 @@
                     }
                 }
 
-                // 3. อัปเดตข้อมูลขึ้น Firebase สตาร์ตเกมทันที
                 let updates = { status: "playing", phase: "night", timer: 60, news: "🌕 คืนแรกเริ่มขึ้นแล้ว พลังวิเศษตื่นขึ้นครบทุกตำแหน่ง!", nightVictim: "", protectedPlayerId: "" };
                 keys.forEach(k => {
                     updates[`players/${k}/role`] = assignedRoles[k];
@@ -487,12 +482,13 @@
         function renderActionTable(playersObj, currentPhase, nightVictimId, protectedId) {
             const tbody = document.getElementById('action-table-body');
             tbody.innerHTML = "";
-            document.getElementById('th-action').innerText = currentPhase === "night" ? "คำสั่งพลังวิเศษ" : "สถานะ";
+            document.getElementById('th-action').innerText = currentPhase === "night" ? "คำสั่งพลังวิเศษ" : "โหวตประหาร";
 
             Object.keys(playersObj).forEach(pId => {
                 const p = playersObj[pId];
                 const tr = document.createElement('tr');
                 let actionHtml = "";
+                let voteBadge = p.alive && currentPhase === "day" ? `<span class="badge votes">🗳️ ${p.votesReceived || 0} โหวต</span>` : "";
 
                 if (!p.alive) {
                     actionHtml = `<span style="color:var(--text-muted); font-size:12px;">👻 ตายแล้ว (${p.role})</span>`;
@@ -500,7 +496,12 @@
                     actionHtml = `<span style="color:var(--text-muted); font-size:12px;">วิญญาณรอดูเกม</span>`;
                 } else {
                     if (currentPhase === "day") {
-                        actionHtml = `<span style="color:var(--success); font-size:12px;">☀️ คุยกันในแชต</span>`;
+                        // 🛠️ ฟิกซ์แก้จุดนี้: เช็กสถานะสิทธิ์ด้วยตัวแปรกลางห้องกลางวันตรง ๆ ป้องกันบั๊กข้ามเฟส
+                        if (hasVotedThisDay) {
+                            actionHtml = `<span style="color:var(--text-muted); font-size:12px;">ใช้สิทธิ์แล้ว</span>`;
+                        } else {
+                            actionHtml = `<button class="vote-btn" onclick="submitDayVote('${pId}')">🗳️ โหวตคนนี้</button>`;
+                        }
                     } else if (currentPhase === "night") {
                         if (myRole === '🐺 หมาป่า') {
                             if (pId === myPlayerId || p.role === '🐺 หมาป่า') {
@@ -525,12 +526,19 @@
                 }
 
                 tr.innerHTML = `
-                    <td><strong>${p.name}</strong> ${p.isAi ? '<span class="badge ai" style="font-size:9px; padding:2px 4px;">AI</span>' : ''}</td>
+                    <td><strong>${p.name}</strong> ${p.isAi ? '<span class="badge ai" style="font-size:9px; padding:2px 4px;">AI</span>' : ''} ${voteBadge}</td>
                     <td><span class="badge ${p.alive ? 'alive' : 'dead'}">${p.alive ? 'รอด' : 'ตาย'}</span></td>
                     <td style="text-align:right;">${actionHtml}</td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        function submitDayVote(targetId) {
+            // 🛠️ เพิ่มดักความปลอดภัยป้องกันแต้มไม่ขึ้น: เช็กผ่านตัวแปรสถานะหลักของเฟสปัจจุบัน
+            if (hasVotedThisDay || !myAlive || currentPhaseState !== "day") return;
+            hasVotedThisDay = true;
+            roomRef.child(`players/${targetId}/votesReceived`).transaction(v => (v || 0) + 1);
         }
 
         function sendChatMessage() {
@@ -565,27 +573,55 @@
                 let updates = { phase: newPhase, timer: 60 };
                 let logNews = "";
 
-                if (data.phase === "day" && newPhase === "night") {
-                    logNews = "🌙 ถึงเวลากลางคืนอีกครั้ง... พลังวิเศษเริ่มทำงาน!";
-                    updates['news'] = logNews;
-                    updates['nightVictim'] = ""; 
-                    updates['protectedPlayerId'] = ""; 
-                }
-
                 if (data.phase === "night" && newPhase === "day") {
                     const victimId = data.nightVictim || "";
                     const protId = data.protectedPlayerId || "";
                     
                     if (victimId !== "" && players[victimId] && players[victimId].alive) {
                         if (victimId === protId) {
-                            logNews = `🛡️ บอดี้การ์ดท็อปฟอร์ม! กางบาเรียปกป้อง [คุณ ${players[victimId].name}] จากคมเขี้ยวหมาป่าได้สำเร็จ คืนนี้ไม่มีใครตาย!`;
+                            logNews = `🛡️ บอดี้การ์ดท็อปฟอร์ม! กางบาเรียปกป้อง [คุณ ${players[victimId].name}] จากคมเขี้ยวหมาป่าสำเร็จ คืนนี้ไม่มีใครตาย!`;
                         } else {
                             updates[`players/${victimId}/alive`] = false;
                             logNews = `📢 ข่าวร้ายตอนเช้า... [คุณ ${players[victimId].name}] ถูกหมาป่าลอบสังหารตายคาบ้าน!`;
                         }
                     } else { logNews = "💤 เมื่อคืนนี้สงบสุขอย่างประหลาด ไม่มีใครโดนทำร้ายเลย"; }
+                    
+                    Object.keys(players).forEach(k => { updates[`players/${k}/votesReceived`] = 0; });
                     updates['news'] = logNews;
                 }
+
+                if (data.phase === "day" && newPhase === "night") {
+                    let maxVotes = 0;
+                    let candidateId = null;
+                    let isTie = false;
+
+                    Object.keys(players).forEach(k => {
+                        const p = players[k];
+                        if (p.alive && (p.votesReceived || 0) > 0) {
+                            if (p.votesReceived > maxVotes) {
+                                maxVotes = p.votesReceived;
+                                candidateId = k;
+                                isTie = false;
+                            } else if (p.votesReceived === maxVotes) {
+                                isTie = true;
+                            }
+                        }
+                    });
+
+                    if (candidateId && !isTie) {
+                        updates[`players/${candidateId}/alive`] = false;
+                        logNews = `⚖️ มติหมู่บ้านเป็นเอกฉันท์! สั่งลากตัว [คุณ ${players[candidateId].name}] ไปแขวนคอหน้าลานกว้าง! (บทจริงคือ: ${players[candidateId].role})`;
+                    } else if (isTie) {
+                        logNews = `⚖️ คะแนนโหวตเสมอกันอย่างดุเดือด! ศาลเตี้ยตัดสินไม่ได้ คืนนี้ไม่มีใครถูกแขวนคอ`;
+                    } else {
+                        logNews = `💤 วันนี้ไม่มีใครยอมกดโหวตใครเลย... ทุกคนแยกย้ายกลับบ้านไปนอนด้วยความระแวง`;
+                    }
+
+                    updates['news'] = logNews;
+                    updates['nightVictim'] = ""; 
+                    updates['protectedPlayerId'] = ""; 
+                }
+
                 roomRef.update(updates);
             });
         }
@@ -622,6 +658,7 @@
                     Object.keys(data.players).forEach(k => {
                         updates[`players/${k}/role`] = "รอสุ่ม";
                         updates[`players/${k}/alive`] = true;
+                        updates[`players/${k}/votesReceived`] = 0;
                     });
                     roomRef.child('chats').remove();
                     roomRef.update(updates);
