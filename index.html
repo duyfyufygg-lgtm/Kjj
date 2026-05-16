@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Werewolf Pro - Fixed Live Voting</title>
+    <title>Werewolf Pro - True Win Conditions</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
@@ -217,7 +217,7 @@
 
         let currentRoomId = null, myPlayerId = null, myName = "", isHost = false, roomRef = null;
         let myRole = "", myAlive = true, countdownInterval = null, currentPhaseState = "night";
-        let aiActionDone = false, isAiActive = true, hasVotedThisDay = false; 
+        let aiActionDone = false, isAiActive = true, hasVotedThisDay = false, isGameEnded = false; 
 
         const ROLE_DETAILS = {
             '🐺 หมาป่า': 'ตอนกลางคืนทีมหมาป่าต้องเลือกฆ่าชาวบ้านร่วมกันได้แค่ "1 คนต่อคืนเท่านั้น" ห้ามให้คนอื่นจับได้',
@@ -247,6 +247,7 @@
             currentRoomId = Math.floor(10000 + Math.random() * 90000).toString();
             myPlayerId = "host_" + Math.random().toString(36).substr(2, 9);
             isHost = true;
+            isGameEnded = false;
             roomRef = database.ref(`werewolf_rooms/${currentRoomId}`);
             
             const roomData = { status: "waiting", phase: "night", timer: 60, hostId: myPlayerId, players: {}, news: "🌕 ยินดีต้อนรับสู่คืนแรกอันเงียบสงบ", nightVictim: "", protectedPlayerId: "" };
@@ -264,7 +265,7 @@
             const target = document.getElementById('room-id-input').value.trim();
             if (!myName || !target) { alert('กรอกชื่อและรหัสห้องให้ครบถ้วน'); return; }
             
-            currentRoomId = target; myPlayerId = "player_" + Math.random().toString(36).substr(2, 9); isHost = false;
+            currentRoomId = target; myPlayerId = "player_" + Math.random().toString(36).substr(2, 9); isHost = false; isGameEnded = false;
             roomRef = database.ref(`werewolf_rooms/${currentRoomId}`);
             
             roomRef.child('players').child(myPlayerId).set({
@@ -348,10 +349,11 @@
                     renderActionTable(playersObj, data.phase, data.nightVictim || "", data.protectedPlayerId || "");
                     renderChatMessages(data.chats || {});
                     
-                    if(isHost && data.timer <= 45 && !aiActionDone && isAiActive) {
+                    if(isHost && data.timer <= 45 && !aiActionDone && isAiActive && !isGameEnded) {
                         triggerAiBrainLogic(playersObj, data.phase, data.nightVictim || "", data.protectedPlayerId || "");
                     }
 
+                    // 🛠️ ตรวจสอบเงื่อนไขการชนะฉบับใหม่ที่พี่ต้องการ
                     checkWinConditions(pList);
                     if(isHost) document.getElementById('host-phase-controls').style.display = 'block';
                     showScreen('play-screen');
@@ -360,6 +362,7 @@
 
             if (isHost && !countdownInterval) {
                 countdownInterval = setInterval(() => {
+                    if (isGameEnded) return; // ถ้าเกมจบแล้วให้หยุดจับเวลาเฟสชั่วคราว
                     roomRef.child('timer').transaction(t => {
                         if (t <= 1) {
                             setTimeout(() => {
@@ -412,7 +415,7 @@
                 let keys = Object.keys(players);
                 const total = keys.length;
                 
-                if (total < 3) { alert('ต้องมีคนอย่างน้อย 3 คนขึ้นไปถึงจะแบ่งตำแหน่ง หมาป่า หมอดู และบอดี้การ์ด ได้อย่างสมดุลครับ'); return; }
+                if (total < 3) { alert('ต้องมีคนอย่างน้อย 3 คนขึ้นไปครับ'); return; }
                 
                 let assignedRoles = {};
                 const availableRoles = ['🐺 หมาป่า', '👁️ หมอดู', '🛡️ บอดี้การ์ด', '🧑 ชาวบ้าน'];
@@ -468,6 +471,7 @@
                     }
                 }
 
+                isGameEnded = false;
                 let updates = { status: "playing", phase: "night", timer: 60, news: "🌕 คืนแรกเริ่มขึ้นแล้ว พลังวิเศษตื่นขึ้นครบทุกตำแหน่ง!", nightVictim: "", protectedPlayerId: "" };
                 keys.forEach(k => {
                     updates[`players/${k}/role`] = assignedRoles[k];
@@ -496,7 +500,6 @@
                     actionHtml = `<span style="color:var(--text-muted); font-size:12px;">วิญญาณรอดูเกม</span>`;
                 } else {
                     if (currentPhase === "day") {
-                        // 🛠️ ฟิกซ์แก้จุดนี้: เช็กสถานะสิทธิ์ด้วยตัวแปรกลางห้องกลางวันตรง ๆ ป้องกันบั๊กข้ามเฟส
                         if (hasVotedThisDay) {
                             actionHtml = `<span style="color:var(--text-muted); font-size:12px;">ใช้สิทธิ์แล้ว</span>`;
                         } else {
@@ -535,8 +538,7 @@
         }
 
         function submitDayVote(targetId) {
-            // 🛠️ เพิ่มดักความปลอดภัยป้องกันแต้มไม่ขึ้น: เช็กผ่านตัวแปรสถานะหลักของเฟสปัจจุบัน
-            if (hasVotedThisDay || !myAlive || currentPhaseState !== "day") return;
+            if (hasVotedThisDay || !myAlive || currentPhaseState !== "day" || isGameEnded) return;
             hasVotedThisDay = true;
             roomRef.child(`players/${targetId}/votesReceived`).transaction(v => (v || 0) + 1);
         }
@@ -544,7 +546,7 @@
         function sendChatMessage() {
             const input = document.getElementById('chat-input');
             const txt = input.value.trim();
-            if(!txt || !myAlive) return;
+            if(!txt || !myAlive || isGameEnded) return;
             roomRef.child('chats').push().set({ senderId: myPlayerId, senderName: myName, message: txt });
             input.value = "";
         }
@@ -562,11 +564,12 @@
             list.scrollTop = list.scrollHeight;
         }
 
-        function executeKill(targetId) { roomRef.update({ nightVictim: targetId }); }
-        function executeProtect(targetId) { roomRef.update({ protectedPlayerId: targetId }); }
+        function executeKill(targetId) { if(!isGameEnded) roomRef.update({ nightVictim: targetId }); }
+        function executeProtect(targetId) { if(!isGameEnded) roomRef.update({ protectedPlayerId: targetId }); }
         function executeScan(role, name) { alert(`🔮 นิมิตหมอดู: คุณ ${name} คือ [ ${role} ] !`); }
 
         function triggerPhaseChange(newPhase) {
+            if (isGameEnded) return;
             roomRef.once('value').then(snap => {
                 const data = snap.val(); if(!data) return;
                 const players = data.players;
@@ -626,26 +629,39 @@
             });
         }
 
+        // 🛠️ ฟังก์ชันเช็กผลแพ้ชนะฉบับโมดิฟายใหม่ตามสั่ง: หมาป่าต้องกินฝั่งคนดีให้ตายเกลี้ยงหมดหมู่บ้าน (เหลือ 0 คน) ถึงจะชนะ!
         function checkWinConditions(playerList) {
-            let wolves = 0; let villagers = 0;
+            if (isGameEnded) return;
+
+            let wolves = 0; 
+            let villagers = 0; // นับรวม หมอดู บอดี้การ์ด และชาวบ้าน
+
             playerList.forEach(p => {
-                if (p.alive) { if (p.role === '🐺 หมาป่า') wolves++; else villagers++; }
+                if (p.alive) { 
+                    if (p.role === '🐺 หมาป่า') wolves++; 
+                    else villagers++; 
+                }
             });
+
+            // เงื่อนไข 1: หมาป่าตายเรียบหมดแล้ว -> ฝั่งชาวบ้านชนะ
             if (wolves === 0 && villagers > 0) {
-                alert("🎉 ฝั่งชาวบ้านชนะรวด! ปิดห้องทันที!");
-                forceDestroyRoom();
-            } else if (wolves >= villagers && wolves > 0) {
-                alert("🐺 มนุษย์หมาป่ากินเรียบทั้งหมู่บ้าน! ปิดห้องทันที!");
-                forceDestroyRoom();
+                isGameEnded = true;
+                alert("🎉 ฝั่งชาวบ้านชนะรวด! หมาป่าถูกกำจัดหมดสิ้นแล้ว!");
+            } 
+            // เงื่อนไข 2: ฝั่งคนดีโดนกินเรียบจนเหลือ 0 คนจริง ๆ -> หมาป่าชนะ
+            else if (villagers === 0 && wolves > 0) {
+                isGameEnded = true;
+                alert("🐺 มนุษย์หมาป่ากินเรียบทั้งหมู่บ้าน! ไม่เหลือคนรอดชีวิตเลยสักคน!");
             }
+            // ปลดล็อกลอจิกเก่าที่สั่งลบห้องทิ้งทันทีออกไป เพื่อไม่ให้ดีดเด้งกลับหน้าแรก!
         }
 
-        function forceDestroyRoom() { if(isHost && roomRef) { clearInterval(countdownInterval); countdownInterval = null; roomRef.remove(); } }
+        function forceDestroyRoom() { if(roomRef) { clearInterval(countdownInterval); countdownInterval = null; roomRef.remove(); } }
 
         function cleanupAndKick() {
             clearInterval(countdownInterval); countdownInterval = null;
             if(roomRef) roomRef.off();
-            currentRoomId = null; myPlayerId = null; isHost = false; roomRef = null;
+            currentRoomId = null; myPlayerId = null; isHost = false; roomRef = null; isGameEnded = false;
             document.body.classList.remove('night');
             showScreen('entrance-screen');
         }
@@ -654,6 +670,7 @@
             if(roomRef) {
                 roomRef.once('value').then(snap => {
                     const data = snap.val(); if(!data) return;
+                    isGameEnded = false;
                     let updates = { status: "waiting", phase: "night", timer: 60, news: "", nightVictim: "", protectedPlayerId: "" };
                     Object.keys(data.players).forEach(k => {
                         updates[`players/${k}/role`] = "รอสุ่ม";
